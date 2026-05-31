@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
@@ -18,22 +19,52 @@ function resolveFromRoot(value) {
 }
 
 export class Store {
-  constructor(filePath = process.env.DATA_FILE) {
+  constructor(filePath = process.env.DATA_FILE, databaseUrl = process.env.DATABASE_URL) {
     this.filePath = resolveFromRoot(filePath);
+    this.databaseUrl = databaseUrl;
+    this.pool = databaseUrl
+      ? new pg.Pool({
+          connectionString: databaseUrl,
+          ssl: { rejectUnauthorized: false }
+        })
+      : null;
     this.data = structuredClone(defaultData);
-    this.load();
+    this.ready = this.load();
   }
 
-  load() {
+  async load() {
+    if (this.pool) {
+      await this.pool.query(`
+        create table if not exists app_state (
+          key text primary key,
+          value jsonb not null,
+          updated_at timestamptz not null default now()
+        )
+      `);
+      const result = await this.pool.query("select value from app_state where key = $1", ["default"]);
+      if (result.rows[0]?.value) {
+        const parsed = result.rows[0].value;
+        this.data = {
+          users: parsed.users ?? [],
+          snapshots: parsed.snapshots ?? [],
+          events: parsed.events ?? [],
+          followerCounts: parsed.followerCounts ?? []
+        };
+      } else {
+        await this.save();
+      }
+      return;
+    }
+
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     if (!fs.existsSync(this.filePath)) {
-      this.save();
+      await this.save();
       return;
     }
 
     const raw = fs.readFileSync(this.filePath, "utf8");
     if (!raw.trim()) {
-      this.save();
+      await this.save();
       return;
     }
 
@@ -46,7 +77,20 @@ export class Store {
     };
   }
 
-  save() {
+  async save() {
+    if (this.pool) {
+      await this.pool.query(
+        `
+          insert into app_state (key, value, updated_at)
+          values ($1, $2, now())
+          on conflict (key)
+          do update set value = excluded.value, updated_at = now()
+        `,
+        ["default", this.data]
+      );
+      return;
+    }
+
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     const tmp = `${this.filePath}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
@@ -57,18 +101,18 @@ export class Store {
     return this.data[collection] ?? [];
   }
 
-  insert(collection, record) {
+  async insert(collection, record) {
     this.data[collection].push(record);
-    this.save();
+    await this.save();
     return record;
   }
 
-  update(collection, id, updater) {
+  async update(collection, id, updater) {
     const item = this.data[collection].find((record) => record.id === id);
     if (!item) return null;
     const next = updater(item) ?? item;
     Object.assign(item, next);
-    this.save();
+    await this.save();
     return item;
   }
 

@@ -30,7 +30,7 @@ export function summarizeSnapshot(snapshot) {
   return snapshot.analysis;
 }
 
-export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
+export async function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
   const now = new Date().toISOString();
   const accountUsername = parsed.account?.username ? normalizeInstagramUsername(parsed.account.username) : null;
   const accountId = parsed.account?.id ? String(parsed.account.id) : null;
@@ -39,7 +39,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
   let accountUsernameChanged = null;
 
   if (accountId && !user.externalAccountId) {
-    store.update("users", user.id, (current) => ({
+    await store.update("users", user.id, (current) => ({
       ...current,
       externalAccountId: accountId,
       verifiedAt: now
@@ -57,7 +57,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
     }
 
     const previousUsername = user.instagramUsername;
-    store.update("users", user.id, (current) => ({
+    await store.update("users", user.id, (current) => ({
       ...current,
       instagramUsername: accountUsername,
       previousUsernames: [...new Set([...(current.previousUsernames ?? []), previousUsername])],
@@ -67,7 +67,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
     user.instagramUsername = accountUsername;
     accountUsernameChanged = { previousUsername, currentUsername: accountUsername };
   } else if (accountUsername === user.instagramUsername && !user.verifiedAt) {
-    store.update("users", user.id, (current) => ({ ...current, verifiedAt: now }));
+    await store.update("users", user.id, (current) => ({ ...current, verifiedAt: now }));
     user.verifiedAt = now;
   }
 
@@ -107,7 +107,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
       : null
   };
 
-  const snapshot = store.insert("snapshots", {
+  const snapshot = await store.insert("snapshots", {
     id: uuidv4(),
     userId: user.id,
     createdAt: now,
@@ -120,7 +120,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
     analysis
   });
 
-  store.insert("followerCounts", {
+  await store.insert("followerCounts", {
     id: uuidv4(),
     userId: user.id,
     capturedAt: now,
@@ -129,7 +129,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
   });
 
   for (const username of lost) {
-    store.insert("events", {
+    await store.insert("events", {
       id: uuidv4(),
       userId: user.id,
       type: "unfollowed",
@@ -142,7 +142,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
   }
 
   for (const username of gained) {
-    store.insert("events", {
+    await store.insert("events", {
       id: uuidv4(),
       userId: user.id,
       type: "new_follower",
@@ -155,7 +155,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
   }
 
   if (accountUsernameChanged) {
-    store.insert("events", {
+    await store.insert("events", {
       id: uuidv4(),
       userId: user.id,
       type: "account_username_changed",
@@ -168,7 +168,7 @@ export function createSnapshotFromParsed(store, user, parsed, uploadMeta = {}) {
 
   for (const change of parsed.usernameChanges ?? []) {
     if (!change.username) continue;
-    store.insert("events", {
+    await store.insert("events", {
       id: uuidv4(),
       userId: user.id,
       type: "username_change",

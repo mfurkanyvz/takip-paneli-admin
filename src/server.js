@@ -19,6 +19,8 @@ import {
 import { parseSnapshotFile, serializeParsed } from "./lib/parser.js";
 import { createSnapshotFromParsed, summarizeSnapshot } from "./lib/analyzer.js";
 
+await store.ready;
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const publicDir = path.join(root, "public");
@@ -176,7 +178,7 @@ app.post("/api/auth/register", async (req, res, next) => {
     if (issues.length) return res.status(400).json({ error: issues.join(" ") });
 
     const now = new Date().toISOString();
-    const user = store.insert("users", {
+    const user = await store.insert("users", {
       id: uuidv4(),
       firstName,
       lastName,
@@ -233,7 +235,7 @@ app.post("/api/snapshots/upload", requireAuth, upload.single("snapshot"), async 
     if (!req.file) return res.status(400).json({ error: "Dosya seçilmedi." });
 
     const parsed = await parseSnapshotFile(req.file.path, req.file.originalname);
-    const snapshot = createSnapshotFromParsed(store, req.user, serializeParsed(parsed), {
+    const snapshot = await createSnapshotFromParsed(store, req.user, serializeParsed(parsed), {
       originalName: req.file.originalname,
       size: req.file.size
     });

@@ -36,7 +36,8 @@ function writeInstagramZip(filePath, followers, following) {
 test("snapshot comparison detects lost and gained followers", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "takip-panel-"));
   const store = new Store(path.join(dir, "db.json"));
-  const user = store.insert("users", {
+  await store.ready;
+  const user = await store.insert("users", {
     id: "user-1",
     firstName: "Furkan",
     lastName: "TEST",
@@ -51,7 +52,7 @@ test("snapshot comparison detects lost and gained followers", async () => {
   const firstZip = path.join(dir, "first.zip");
   writeInstagramZip(firstZip, ["alpha", "bravo"], ["alpha", "charlie"]);
   const firstParsed = serializeParsed(await parseSnapshotFile(firstZip, "first.zip"));
-  const first = createSnapshotFromParsed(store, user, firstParsed, { originalName: "first.zip", size: 1 });
+  const first = await createSnapshotFromParsed(store, user, firstParsed, { originalName: "first.zip", size: 1 });
 
   assert.equal(first.analysis.counts.followers, 2);
   assert.deepEqual(first.analysis.notFollowingBack, ["charlie"]);
@@ -60,7 +61,7 @@ test("snapshot comparison detects lost and gained followers", async () => {
   const secondZip = path.join(dir, "second.zip");
   writeInstagramZip(secondZip, ["bravo", "delta"], ["bravo", "charlie"]);
   const secondParsed = serializeParsed(await parseSnapshotFile(secondZip, "second.zip"));
-  const second = createSnapshotFromParsed(store, user, secondParsed, { originalName: "second.zip", size: 1 });
+  const second = await createSnapshotFromParsed(store, user, secondParsed, { originalName: "second.zip", size: 1 });
 
   assert.deepEqual(second.analysis.lost, ["alpha"]);
   assert.deepEqual(second.analysis.gained, ["delta"]);

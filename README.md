@@ -6,6 +6,7 @@ Siyah temalı, mobil uyumlu, çok kullanıcılı takipçi snapshot analiz paneli
 
 - Panel hesabı ile kayıt/giriş yapar.
 - Instagram şifresi istemez.
+- `DATABASE_URL` eklenirse ücretsiz Postgres üzerinde kalıcı veri tutar.
 - iPhone veya bilgisayardan ZIP, JSON, HTML, CSV, TXT, XLSX snapshot dosyası yükler.
 - Önceki snapshot ile yeni snapshotı karşılaştırır.
 - Takipten çıkanları, yeni takipçileri, karşılıksız takipleri ve bekleyen istekleri listeler.
@@ -56,7 +57,10 @@ SESSION_SECRET=uzun-guclu-bir-deger
 DATA_FILE=/var/data/db.json
 UPLOAD_DIR=/var/data/uploads
 UPLOAD_LIMIT_MB=100
+DATABASE_URL=postgresql://...
 ```
+
+Tamamen ücretsiz kalmak için Render Free Web Service + Neon/Supabase Free Postgres kullan. Render Free web servislerinde kalıcı disk yoktur; `DATABASE_URL` eklemezsen servis yeniden başladığında lokal JSON veri kaybolabilir.
 
 ## Desteklenen Dosyalar
 
