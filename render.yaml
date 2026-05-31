@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: takip-paneli
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: UPLOAD_LIMIT_MB
+        value: "100"
+      - key: DATA_FILE
+        value: /var/data/db.json
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+    disk:
+      name: takip-paneli-data
+      mountPath: /var/data
+      sizeGB: 1

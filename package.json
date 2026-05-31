@@ -1,0 +1,24 @@
+{
+  "name": "takip-paneli",
+  "version": "1.0.0",
+  "description": "Cok kullanicili, mobil uyumlu takipci snapshot analiz paneli.",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "helmet": "^7.1.0",
+    "multer": "^2.0.2",
+    "uuid": "^11.1.0"
+  }
+}

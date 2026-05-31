@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Paneli</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main id="auth-screen" class="auth-screen">
+      <section class="auth-card">
+        <div class="auth-brand">
+          <span class="brand-mark">A</span>
+          <div>
+            <h1>Admin Paneli</h1>
+            <p id="auth-subtitle">Giriş yap</p>
+          </div>
+        </div>
+
+        <div class="auth-toggle" role="tablist" aria-label="Giriş seçenekleri">
+          <button id="login-tab" class="toggle-pill active" type="button">Giriş Yap</button>
+          <button id="register-tab" class="toggle-pill" type="button">Kayıt Ol</button>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <label>
+            <span>Instagram kullanıcı adı</span>
+            <div class="username-field">
+              <span>@</span>
+              <input id="login-username" name="instagramUsername" autocomplete="username" required />
+            </div>
+          </label>
+          <label>
+            <span>Panel şifresi</span>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+            <small>Bu Instagram şifreniz değildir.</small>
+          </label>
+          <button class="primary-btn" type="submit">Giriş Yap</button>
+        </form>
+
+        <form id="register-form" class="auth-form hidden">
+          <div class="steps" aria-label="Kayıt adımları">
+            <span class="step-dot active" data-step-dot="1">1</span>
+            <span class="step-dot" data-step-dot="2">2</span>
+            <span class="step-dot" data-step-dot="3">3</span>
+          </div>
+
+          <section class="register-step" data-step="1">
+            <label>
+              <span>Ad</span>
+              <input id="first-name" name="firstName" autocomplete="given-name" required />
+            </label>
+            <label>
+              <span>Soyad</span>
+              <input id="last-name" name="lastName" autocomplete="family-name" required />
+            </label>
+            <button class="primary-btn" type="button" data-next-step="2">Sonraki</button>
+          </section>
+
+          <section class="register-step hidden" data-step="2">
+            <label>
+              <span>Instagram kullanıcı adı</span>
+              <div class="username-field">
+                <span>@</span>
+                <input id="register-username" name="instagramUsername" autocomplete="username" required />
+              </div>
+            </label>
+            <p id="username-check" class="form-status muted">Kullanıcı adı bekleniyor.</p>
+            <div class="button-row">
+              <button class="ghost-btn" type="button" data-prev-step="1">Geri</button>
+              <button class="primary-btn" type="button" data-next-step="3">Sonraki</button>
+            </div>
+          </section>
+
+          <section class="register-step hidden" data-step="3">
+            <label>
+              <span>Panel şifresi</span>
+              <input id="register-password" name="password" type="password" autocomplete="new-password" required />
+              <small>Bu Instagram şifreniz değildir.</small>
+            </label>
+            <ul id="password-rules" class="password-rules">
+              <li data-rule="length">En az 5 karakter</li>
+              <li data-rule="upper">Büyük harf</li>
+              <li data-rule="lower">Küçük harf</li>
+              <li data-rule="number">Sayı</li>
+              <li data-rule="symbol">Sembol</li>
+            </ul>
+            <div class="button-row">
+              <button class="ghost-btn" type="button" data-prev-step="2">Geri</button>
+              <button class="primary-btn" type="submit">Kayıt Ol</button>
+            </div>
+          </section>
+        </form>
+
+        <p id="auth-message" class="message" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <main id="app-screen" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="side-brand">
+          <span class="brand-mark small">A</span>
+          <span>Admin Paneli</span>
+        </div>
+        <nav class="side-nav">
+          <button class="nav-item active" type="button" data-view="overview">Genel</button>
+          <button class="nav-item" type="button" data-view="losses">Çıkanlar</button>
+          <button class="nav-item" type="button" data-view="upload">Yükle</button>
+          <button class="nav-item" type="button" data-view="changes">Değişenler</button>
+        </nav>
+        <button id="logout-btn" class="logout-btn" type="button">Çıkış Yap</button>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Canlı Panel</p>
+            <h2 id="page-title">Genel Özet</h2>
+          </div>
+          <div class="user-chip">
+            <span id="user-name">-</span>
+            <strong id="user-handle">@-</strong>
+          </div>
+        </header>
+
+        <section id="overview-view" class="view active">
+          <div class="kpi-grid">
+            <article class="metric">
+              <span>Takipçi</span>
+              <strong id="metric-followers">0</strong>
+            </article>
+            <article class="metric">
+              <span>Takip Edilen</span>
+              <strong id="metric-following">0</strong>
+            </article>
+            <article class="metric loss">
+              <span>Son Snapshot Kaybı</span>
+              <strong id="metric-lost">0</strong>
+            </article>
+            <article class="metric gain">
+              <span>Yeni Takipçi</span>
+              <strong id="metric-gained">0</strong>
+            </article>
+          </div>
+
+          <section class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Takipçi Akışı</h3>
+                <p id="chart-note">Snapshot verisine göre güncellenir.</p>
+              </div>
+              <span id="refresh-badge" class="status-pill">5 sn</span>
+            </div>
+            <canvas id="followers-chart" width="900" height="280"></canvas>
+          </section>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Kim Takipten Çıktı</h3>
+                <button class="text-btn" type="button" data-view-link="losses">Tümünü Aç</button>
+              </div>
+              <div id="loss-preview" class="list-table"></div>
+            </section>
+
+            <section class="panel upload-panel">
+              <div class="panel-head">
+                <h3>Snapshot Yükle</h3>
+                <span id="verify-status" class="status-pill amber">Bekliyor</span>
+              </div>
+              <form id="quick-upload-form" class="upload-form">
+                <input id="quick-file" type="file" name="snapshot" />
+                <button class="primary-btn" type="submit">Yükle ve Analiz Et</button>
+              </form>
+              <p id="upload-hint" class="muted">ZIP, JSON, HTML, CSV, TXT ve XLSX okunur.</p>
+            </section>
+          </div>
+        </section>
+
+        <section id="losses-view" class="view">
+          <section class="panel full-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Takipten Çıkanlar</h3>
+                <p>Tespit zamanı ve snapshot aralığıyla listelenir.</p>
+              </div>
+              <input id="loss-search" class="search-input" placeholder="Kullanıcı ara" />
+            </div>
+            <div id="loss-table" class="list-table large"></div>
+          </section>
+        </section>
+
+        <section id="upload-view" class="view">
+          <section class="panel full-panel upload-large">
+            <div class="panel-head">
+              <div>
+                <h3>Mobil Yükleme</h3>
+                <p>Telefonundan dosya seçip aynı panel hesabına işleyebilirsin.</p>
+              </div>
+              <span class="status-pill">Snapshot</span>
+            </div>
+            <form id="upload-form" class="drop-zone">
+              <input id="snapshot-file" type="file" name="snapshot" />
+              <button class="primary-btn" type="submit">Dosyayı Yükle</button>
+            </form>
+            <div id="upload-result" class="upload-result"></div>
+          </section>
+        </section>
+
+        <section id="changes-view" class="view">
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Kullanıcı Adı Değişenler</h3>
+                <span class="status-pill">Export</span>
+              </div>
+              <div id="username-change-list" class="list-table"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Takipçilerim</h3>
+                <span class="status-pill teal">Son Snapshot</span>
+              </div>
+              <div id="relationship-list" class="compact-stats"></div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <nav class="mobile-nav">
+        <button class="mobile-item active" type="button" data-view="overview">Genel</button>
+        <button class="mobile-item" type="button" data-view="losses">Çıkanlar</button>
+        <button class="mobile-item" type="button" data-view="upload">Yükle</button>
+        <button class="mobile-item" type="button" data-view="changes">Diğer</button>
+      </nav>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

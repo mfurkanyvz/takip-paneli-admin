@@ -1,0 +1,280 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import bcrypt from "bcryptjs";
+import express from "express";
+import session from "express-session";
+import helmet from "helmet";
+import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
+import { store } from "./lib/store.js";
+import {
+  formatFirstNames,
+  formatLastName,
+  isValidInstagramUsername,
+  normalizeInstagramUsername,
+  passwordIssues,
+  toDisplayUsername
+} from "./lib/text.js";
+import { parseSnapshotFile, serializeParsed } from "./lib/parser.js";
+import { createSnapshotFromParsed, summarizeSnapshot } from "./lib/analyzer.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, "..");
+const publicDir = path.join(root, "public");
+const uploadDir = path.resolve(root, process.env.UPLOAD_DIR ?? "uploads");
+const uploadLimitMb = Number(process.env.UPLOAD_LIMIT_MB ?? 100);
+const port = Number(process.env.PORT ?? 3000);
+
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const app = express();
+const upload = multer({
+  dest: uploadDir,
+  limits: {
+    fileSize: uploadLimitMb * 1024 * 1024
+  }
+});
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  session({
+    name: "takip_panel_sid",
+    secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 1000 * 60 * 60 * 24 * 30
+    }
+  })
+);
+
+function publicUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    instagramUsername: user.instagramUsername,
+    displayUsername: toDisplayUsername(user.instagramUsername),
+    previousUsernames: user.previousUsernames ?? [],
+    verifiedAt: user.verifiedAt ?? null,
+    usernameChangedAt: user.usernameChangedAt ?? null,
+    createdAt: user.createdAt
+  };
+}
+
+function findUserForLogin(username) {
+  const normalized = normalizeInstagramUsername(username);
+  return store
+    .list("users")
+    .find((user) => user.instagramUsername === normalized || (user.previousUsernames ?? []).includes(normalized));
+}
+
+function requireAuth(req, res, next) {
+  const user = store.findUserById(req.session.userId);
+  if (!user) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ error: "Oturum bulunamadı. Lütfen tekrar giriş yapın." });
+  }
+  req.user = user;
+  return next();
+}
+
+function snapshotCard(snapshot) {
+  const analysis = summarizeSnapshot(snapshot);
+  return {
+    id: snapshot.id,
+    createdAt: snapshot.createdAt,
+    originalName: snapshot.originalName,
+    counts: analysis.counts,
+    lostCount: analysis.lost.length,
+    gainedCount: analysis.gained.length,
+    warningCount: analysis.warnings.length
+  };
+}
+
+function dashboardFor(user) {
+  const latest = store.latestSnapshotForUser(user.id);
+  const analysis = summarizeSnapshot(latest);
+  const events = store.eventsForUser(user.id);
+  const chart = store.followerCountsForUser(user.id);
+  const snapshots = store.snapshotsForUser(user.id).map(snapshotCard);
+  const unfollowEvents = events.filter((event) => event.type === "unfollowed");
+  const latestUnfollow = unfollowEvents[0] ?? null;
+
+  return {
+    user: publicUser(user),
+    latestSnapshot: latest ? snapshotCard(latest) : null,
+    analysis,
+    events: events.slice(0, 200),
+    chart,
+    snapshots,
+    kpis: {
+      followers: analysis.counts.followers,
+      following: analysis.counts.following,
+      pendingRequests: analysis.counts.pendingRequests,
+      lostLastImport: analysis.lost.length,
+      gainedLastImport: analysis.gained.length,
+      totalDetectedUnfollows: unfollowEvents.length,
+      latestUnfollow
+    },
+    capabilities: {
+      uiRefreshSeconds: 5,
+      automaticFollowerList: false,
+      publicProfileScraping: false,
+      officialApiReady: true,
+      note: "Panel 5 saniyede bir yenilenir. İsim isim takipten çıkan analizi snapshot/export karşılaştırmasıyla çalışır."
+    }
+  };
+}
+
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
+
+app.post("/api/username/check", (req, res) => {
+  const username = normalizeInstagramUsername(req.body.username);
+  const formatValid = isValidInstagramUsername(username);
+  const existsInPanel = Boolean(store.findUserByUsername(username));
+
+  res.json({
+    username,
+    displayUsername: toDisplayUsername(username),
+    formatValid,
+    existsInPanel,
+    realAccountVerified: false,
+    message: formatValid
+      ? "Format uygun. Gerçek hesap doğrulaması için Meta bağlantısı veya hesaba ait export dosyası gerekir."
+      : "Kullanıcı adı formatı uygun değil."
+  });
+});
+
+app.post("/api/auth/register", async (req, res, next) => {
+  try {
+    const firstName = formatFirstNames(req.body.firstName);
+    const lastName = formatLastName(req.body.lastName);
+    const instagramUsername = normalizeInstagramUsername(req.body.instagramUsername);
+    const password = String(req.body.password ?? "");
+
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: "Ad ve soyad zorunlu." });
+    }
+    if (!isValidInstagramUsername(instagramUsername)) {
+      return res.status(400).json({ error: "Instagram kullanıcı adı formatı uygun değil." });
+    }
+    if (store.findUserByUsername(instagramUsername)) {
+      return res.status(409).json({ error: "Bu Instagram kullanıcı adıyla panel hesabı zaten var." });
+    }
+
+    const issues = passwordIssues(password);
+    if (issues.length) return res.status(400).json({ error: issues.join(" ") });
+
+    const now = new Date().toISOString();
+    const user = store.insert("users", {
+      id: uuidv4(),
+      firstName,
+      lastName,
+      instagramUsername,
+      previousUsernames: [],
+      passwordHash: await bcrypt.hash(password, 12),
+      externalAccountId: null,
+      verifiedAt: null,
+      createdAt: now,
+      usernameChangedAt: null
+    });
+
+    req.session.userId = user.id;
+    res.status(201).json({ user: publicUser(user), dashboard: dashboardFor(user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/auth/login", async (req, res, next) => {
+  try {
+    const user = findUserForLogin(req.body.instagramUsername);
+    const password = String(req.body.password ?? "");
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: "Kullanıcı adı veya panel şifresi hatalı." });
+    }
+    req.session.userId = user.id;
+    res.json({ user: publicUser(user), dashboard: dashboardFor(user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("takip_panel_sid");
+    res.json({ ok: true });
+  });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const user = store.findUserById(req.session.userId);
+  if (!user) return res.json({ user: null });
+  res.json({ user: publicUser(user), dashboard: dashboardFor(user) });
+});
+
+app.get("/api/dashboard", requireAuth, (req, res) => {
+  res.json(dashboardFor(req.user));
+});
+
+app.post("/api/snapshots/upload", requireAuth, upload.single("snapshot"), async (req, res, next) => {
+  let tempPath = req.file?.path;
+  try {
+    if (!req.file) return res.status(400).json({ error: "Dosya seçilmedi." });
+
+    const parsed = await parseSnapshotFile(req.file.path, req.file.originalname);
+    const snapshot = createSnapshotFromParsed(store, req.user, serializeParsed(parsed), {
+      originalName: req.file.originalname,
+      size: req.file.size
+    });
+
+    res.status(201).json({
+      snapshot: snapshotCard(snapshot),
+      dashboard: dashboardFor(store.findUserById(req.user.id)),
+      warnings: snapshot.analysis.warnings
+    });
+  } catch (error) {
+    next(error);
+  } finally {
+    if (tempPath && fs.existsSync(tempPath)) {
+      fs.rmSync(tempPath, { force: true });
+    }
+  }
+});
+
+app.get("/api/snapshots/:id", requireAuth, (req, res) => {
+  const snapshot = store
+    .snapshotsForUser(req.user.id)
+    .find((item) => item.id === req.params.id);
+  if (!snapshot) return res.status(404).json({ error: "Snapshot bulunamadı." });
+  res.json(snapshot);
+});
+
+app.use(express.static(publicDir));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+app.use((error, _req, res, _next) => {
+  if (error.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ error: `Dosya çok büyük. Limit ${uploadLimitMb} MB.` });
+  }
+  const status = error.status || 500;
+  res.status(status).json({
+    error: status === 500 ? "Beklenmeyen bir hata oluştu." : error.message
+  });
+});
+
+app.listen(port, () => {
+  console.log(`Takip Paneli http://localhost:${port} adresinde çalışıyor.`);
+});
