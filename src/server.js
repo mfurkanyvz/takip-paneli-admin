@@ -118,9 +118,33 @@ function snapshotCard(snapshot) {
   };
 }
 
+function toNumber(value) {
+  if (value == null || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function newestProfilePair(userId) {
+  const metrics = store.profileMetricsForUser(userId);
+  return {
+    latest: metrics[0] ?? null,
+    previous: metrics[1] ?? null,
+    history: metrics.slice(0, 30)
+  };
+}
+
+function deltaFor(latest, previous, field) {
+  if (!latest || !previous) return null;
+  const current = toNumber(latest[field]);
+  const before = toNumber(previous[field]);
+  return current == null || before == null ? null : current - before;
+}
+
 function dashboardFor(user) {
   const latest = store.latestSnapshotForUser(user.id);
-  const profileMetric = store.latestProfileMetricForUser(user.id);
+  const profilePair = newestProfilePair(user.id);
+  const profileMetric = profilePair.latest;
+  const previousProfileMetric = profilePair.previous;
   const analysis = summarizeSnapshot(latest);
   const events = store.eventsForUser(user.id);
   const chart = store.followerCountsForUser(user.id);
@@ -136,6 +160,8 @@ function dashboardFor(user) {
     chart,
     snapshots,
     profileMetric,
+    previousProfileMetric,
+    profileHistory: profilePair.history,
     kpis: {
       followers: latest ? analysis.counts.followers : (profileMetric?.followersCount ?? null),
       following: latest ? analysis.counts.following : (profileMetric?.followsCount ?? null),
@@ -146,30 +172,43 @@ function dashboardFor(user) {
       totalDetectedUnfollows: unfollowEvents.length,
       latestUnfollow
     },
+    deltas: {
+      followers: deltaFor(profileMetric, previousProfileMetric, "followersCount"),
+      following: deltaFor(profileMetric, previousProfileMetric, "followsCount"),
+      media: deltaFor(profileMetric, previousProfileMetric, "mediaCount")
+    },
     capabilities: {
-      uiRefreshSeconds: 5,
+      uiRefreshSeconds: 2,
       automaticFollowerList: false,
       publicProfileScraping: false,
       officialApiReady: true,
-      metaMetricsEnabled: Boolean(process.env.META_ACCESS_TOKEN && process.env.META_IG_BUSINESS_ACCOUNT_ID),
-      note: "Panel 5 saniyede bir yenilenir. İsim isim takipten çıkan analizi snapshot/export karşılaştırmasıyla çalışır."
+      metaMetricsEnabled: Boolean(
+        process.env.META_ACCESS_TOKEN && (process.env.META_IG_USER_ID || process.env.META_IG_BUSINESS_ACCOUNT_ID)
+      ),
+      note: "Panel 2 saniyede bir yenilenir. Canlı profil metrikleri resmi Meta API veya yüklenen snapshot verisiyle dolar."
     }
   };
 }
 
 async function fetchOfficialProfileMetrics(username) {
   const token = process.env.META_ACCESS_TOKEN;
+  const igUserId = process.env.META_IG_USER_ID;
   const businessAccountId = process.env.META_IG_BUSINESS_ACCOUNT_ID;
-  if (!token || !businessAccountId) {
+  if (!token || (!igUserId && !businessAccountId)) {
     const error = new Error("Canlı metrik için resmi Meta API bağlantısı gerekiyor.");
     error.status = 501;
     throw error;
   }
 
   const version = process.env.META_GRAPH_VERSION ?? "v23.0";
-  const fields = `business_discovery.username(${username}){username,name,followers_count,follows_count,media_count,profile_picture_url}`;
-  const url = new URL(`https://graph.facebook.com/${version}/${businessAccountId}`);
-  url.searchParams.set("fields", fields);
+  const profileFields = "username,name,biography,website,followers_count,follows_count,media_count,profile_picture_url";
+  const url = igUserId
+    ? new URL(`https://graph.facebook.com/${version}/${igUserId}`)
+    : new URL(`https://graph.facebook.com/${version}/${businessAccountId}`);
+  url.searchParams.set(
+    "fields",
+    igUserId ? profileFields : `business_discovery.username(${username}){${profileFields}}`
+  );
   url.searchParams.set("access_token", token);
 
   const response = await fetch(url);
@@ -180,7 +219,105 @@ async function fetchOfficialProfileMetrics(username) {
     throw error;
   }
 
-  return payload.business_discovery;
+  const profile = igUserId ? payload : payload.business_discovery;
+  if (!profile) {
+    const error = new Error("Meta API profil verisi döndürmedi.");
+    error.status = 502;
+    throw error;
+  }
+
+  return {
+    ...profile,
+    source: igUserId ? "meta_profile" : "meta_business_discovery"
+  };
+}
+
+async function recordProfileMetric(user, profile) {
+  const now = new Date().toISOString();
+  const previousMetric = store.latestProfileMetricForUser(user.id);
+  const nextUsername = normalizeInstagramUsername(profile.username ?? user.instagramUsername);
+  const source = profile.source ?? "meta_api";
+  const metric = await store.insert("profileMetrics", {
+    id: uuidv4(),
+    userId: user.id,
+    capturedAt: now,
+    username: nextUsername,
+    name: profile.name ?? null,
+    biography: profile.biography ?? null,
+    website: profile.website ?? null,
+    followersCount: toNumber(profile.followers_count),
+    followsCount: toNumber(profile.follows_count),
+    mediaCount: toNumber(profile.media_count),
+    profilePictureUrl: profile.profile_picture_url ?? null,
+    source
+  });
+
+  if (typeof metric.followersCount === "number") {
+    await store.insert("followerCounts", {
+      id: uuidv4(),
+      userId: user.id,
+      capturedAt: now,
+      count: metric.followersCount,
+      source
+    });
+  }
+
+  if (nextUsername && nextUsername !== user.instagramUsername) {
+    const previousUsername = user.instagramUsername;
+    const updated = await store.update("users", user.id, (current) => ({
+      ...current,
+      instagramUsername: nextUsername,
+      previousUsernames: [...new Set([...(current.previousUsernames ?? []), previousUsername])],
+      usernameChangedAt: now,
+      verifiedAt: current.verifiedAt ?? now
+    }));
+    Object.assign(user, updated);
+    await store.insert("events", {
+      id: uuidv4(),
+      userId: user.id,
+      type: "account_username_changed",
+      username: nextUsername,
+      previousUsername,
+      detectedAt: now,
+      confidence: source
+    });
+  }
+
+  if (previousMetric && (previousMetric.biography ?? "") !== (metric.biography ?? "")) {
+    await store.insert("events", {
+      id: uuidv4(),
+      userId: user.id,
+      type: "biography_changed",
+      username: metric.username,
+      previousBiography: previousMetric.biography ?? "",
+      biography: metric.biography ?? "",
+      detectedAt: now,
+      confidence: source
+    });
+  }
+
+  const metricChanges = [
+    ["followers_changed", "followersCount"],
+    ["following_changed", "followsCount"],
+    ["media_changed", "mediaCount"]
+  ];
+  for (const [type, field] of metricChanges) {
+    const delta = deltaFor(metric, previousMetric, field);
+    if (!delta) continue;
+    await store.insert("events", {
+      id: uuidv4(),
+      userId: user.id,
+      type,
+      username: metric.username,
+      previousValue: previousMetric[field],
+      value: metric[field],
+      delta,
+      detectedAt: now,
+      confidence: source
+    });
+  }
+
+  return metric;
 }
 
 app.get("/api/health", (_req, res) => {
@@ -279,30 +416,7 @@ app.get("/api/dashboard", requireAuth, (req, res) => {
 app.post("/api/profile/refresh", requireAuth, async (req, res, next) => {
   try {
     const profile = await fetchOfficialProfileMetrics(req.user.instagramUsername);
-    const now = new Date().toISOString();
-    const metric = await store.insert("profileMetrics", {
-      id: uuidv4(),
-      userId: req.user.id,
-      capturedAt: now,
-      username: normalizeInstagramUsername(profile.username ?? req.user.instagramUsername),
-      name: profile.name ?? null,
-      followersCount: profile.followers_count ?? null,
-      followsCount: profile.follows_count ?? null,
-      mediaCount: profile.media_count ?? null,
-      profilePictureUrl: profile.profile_picture_url ?? null,
-      source: "meta_business_discovery"
-    });
-
-    if (typeof metric.followersCount === "number") {
-      await store.insert("followerCounts", {
-        id: uuidv4(),
-        userId: req.user.id,
-        capturedAt: now,
-        count: metric.followersCount,
-        source: "meta_business_discovery"
-      });
-    }
-
+    const metric = await recordProfileMetric(req.user, profile);
     res.json({ metric, dashboard: dashboardFor(req.user) });
   } catch (error) {
     next(error);
@@ -313,44 +427,39 @@ app.patch("/api/account/profile", requireAuth, async (req, res, next) => {
   try {
     const firstName = formatFirstNames(req.body.firstName);
     const lastName = formatLastName(req.body.lastName);
-    const nextUsername = normalizeInstagramUsername(req.body.instagramUsername);
 
     if (!firstName || !lastName) return res.status(400).json({ error: "Ad ve soyad zorunlu." });
-    if (!isValidInstagramUsername(nextUsername)) {
-      return res.status(400).json({ error: "Instagram kullanıcı adı formatı uygun değil." });
-    }
-
-    const existing = store.findUserByUsername(nextUsername);
-    if (existing && existing.id !== req.user.id) {
-      return res.status(409).json({ error: "Bu Instagram kullanıcı adı başka bir panel hesabında kullanılıyor." });
-    }
-
-    const previousUsername = req.user.instagramUsername;
-    const usernameChanged = previousUsername !== nextUsername;
     const updated = await store.update("users", req.user.id, (current) => ({
       ...current,
       firstName,
-      lastName,
-      instagramUsername: nextUsername,
-      previousUsernames: usernameChanged
-        ? [...new Set([...(current.previousUsernames ?? []), previousUsername])]
-        : current.previousUsernames ?? [],
-      usernameChangedAt: usernameChanged ? new Date().toISOString() : current.usernameChangedAt
+      lastName
     }));
 
-    if (usernameChanged) {
-      await store.insert("events", {
-        id: uuidv4(),
-        userId: req.user.id,
-        type: "account_username_changed",
-        username: nextUsername,
-        previousUsername,
-        detectedAt: new Date().toISOString(),
-        confidence: "user_update"
-      });
+    res.json({ user: publicUser(updated), dashboard: dashboardFor(updated) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/account/password", requireAuth, async (req, res, next) => {
+  try {
+    const currentPassword = String(req.body.currentPassword ?? "");
+    const nextPassword = String(req.body.newPassword ?? "");
+    if (!(await bcrypt.compare(currentPassword, req.user.passwordHash))) {
+      return res.status(401).json({ error: "Mevcut panel şifresi hatalı." });
     }
 
-    res.json({ user: publicUser(updated), dashboard: dashboardFor(updated) });
+    const issues = passwordIssues(nextPassword);
+    if (issues.length) return res.status(400).json({ error: issues.join(" ") });
+
+    const passwordHash = await bcrypt.hash(nextPassword, 12);
+    await store.update("users", req.user.id, (current) => ({
+      ...current,
+      passwordHash,
+      passwordChangedAt: new Date().toISOString()
+    }));
+
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

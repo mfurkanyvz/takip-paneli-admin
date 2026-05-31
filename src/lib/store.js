@@ -45,13 +45,7 @@ export class Store {
       const result = await this.pool.query("select value from app_state where key = $1", ["default"]);
       if (result.rows[0]?.value) {
         const parsed = result.rows[0].value;
-      this.data = {
-        users: parsed.users ?? [],
-        snapshots: parsed.snapshots ?? [],
-        events: parsed.events ?? [],
-        followerCounts: parsed.followerCounts ?? [],
-        profileMetrics: parsed.profileMetrics ?? []
-      };
+        this.data = this.normalizeData(parsed);
       } else {
         await this.save();
       }
@@ -71,7 +65,11 @@ export class Store {
     }
 
     const parsed = JSON.parse(raw);
-    this.data = {
+    this.data = this.normalizeData(parsed);
+  }
+
+  normalizeData(parsed = {}) {
+    return {
       users: parsed.users ?? [],
       snapshots: parsed.snapshots ?? [],
       events: parsed.events ?? [],
@@ -159,6 +157,11 @@ export class Store {
 
   latestProfileMetricForUser(userId) {
     return this.profileMetricsForUser(userId)[0] ?? null;
+  }
+
+  async reset() {
+    this.data = structuredClone(defaultData);
+    await this.save();
   }
 }
 

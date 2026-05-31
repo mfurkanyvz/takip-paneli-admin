@@ -3,15 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin Paneli</title>
+    <title>Instagram Admin Paneli</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main id="auth-screen" class="auth-screen">
       <section class="auth-card">
         <div class="auth-brand">
-          <span class="brand-mark">A</span>
+          <span class="brand-mark">IA</span>
           <div>
+            <p class="eyebrow">Resmi olmayan analiz paneli</p>
             <h1>Instagram Admin Paneli</h1>
             <p id="auth-subtitle">Giriş yap</p>
           </div>
@@ -33,7 +34,7 @@
           <label>
             <span>Panel şifresi</span>
             <input id="login-password" name="password" type="password" autocomplete="current-password" required />
-            <small>Bu Instagram şifreniz değildir.</small>
+            <small>Instagram şifren değil, bu panele özel şifredir.</small>
           </label>
           <button class="primary-btn" type="submit">Giriş Yap</button>
         </form>
@@ -76,7 +77,7 @@
             <label>
               <span>Panel şifresi</span>
               <input id="register-password" name="password" type="password" autocomplete="new-password" required />
-              <small>Bu Instagram şifreniz değildir.</small>
+              <small>En az 5 karakter, büyük/küçük harf, sayı ve sembol kullan.</small>
             </label>
             <ul id="password-rules" class="password-rules">
               <li data-rule="length">En az 5 karakter</li>
@@ -99,7 +100,7 @@
     <main id="app-screen" class="app-shell hidden">
       <aside class="sidebar">
         <div class="side-brand">
-          <span class="brand-mark small">A</span>
+          <span class="brand-mark small">IA</span>
           <span>Instagram Admin Paneli</span>
         </div>
         <nav class="side-nav">
@@ -115,7 +116,7 @@
       <section class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Canlı Panel</p>
+            <p class="eyebrow">Canlı panel</p>
             <h2 id="page-title">Genel Özet</h2>
             <span class="layout-badge desktop-only">Web Paneli</span>
             <span class="layout-badge mobile-only">Mobil Panel</span>
@@ -130,47 +131,52 @@
         </header>
 
         <section class="desktop-commandbar desktop-only">
-          <button class="command-tile active" type="button" data-view-link="overview">
-            <span>Kontrol Merkezi</span>
-            <strong>Web görünümü</strong>
+          <button class="command-tile accent-live" type="button" data-action="live-refresh">
+            <span>Canlı kontrol</span>
+            <strong>Meta metriklerini yenile</strong>
           </button>
-          <button class="command-tile" type="button" data-view-link="losses">
-            <span>Takipçi Kaybı</span>
-            <strong>Detaylı tablo</strong>
+          <button class="command-tile accent-export" type="button" data-action="open-export">
+            <span>Veri kaynağı</span>
+            <strong>Instagram export aç</strong>
           </button>
-          <button class="command-tile" type="button" data-view-link="upload">
-            <span>Snapshot</span>
-            <strong>Dosya analizi</strong>
+          <button class="command-tile accent-lock" type="button" data-view-link="profile">
+            <span>Güvenlik</span>
+            <strong>Panel şifresi</strong>
           </button>
         </section>
 
         <section class="mobile-quick-actions mobile-only">
-          <button type="button" data-view-link="upload">Yükle</button>
-          <button type="button" data-view-link="losses">Çıkanlar</button>
-          <button type="button" data-view-link="changes">Diğer</button>
+          <button type="button" data-action="live-refresh">Canlı Yenile</button>
+          <button type="button" data-action="open-export">Export Al</button>
+          <button type="button" data-view-link="profile">Şifre</button>
         </section>
 
         <section id="overview-view" class="view active">
           <div class="kpi-grid">
-            <article class="metric">
+            <article class="metric metric-followers">
               <span>Takipçi</span>
-              <strong id="metric-followers">0</strong>
+              <strong id="metric-followers">-</strong>
+              <small id="delta-followers">Canlı veri bekleniyor</small>
             </article>
-            <article class="metric">
+            <article class="metric metric-following">
               <span>Takip Edilen</span>
-              <strong id="metric-following">0</strong>
+              <strong id="metric-following">-</strong>
+              <small id="delta-following">Canlı veri bekleniyor</small>
             </article>
             <article class="metric loss">
               <span>Son Snapshot Kaybı</span>
               <strong id="metric-lost">0</strong>
+              <small>Dosya karşılaştırması</small>
             </article>
             <article class="metric gain">
               <span>Yeni Takipçi</span>
               <strong id="metric-gained">0</strong>
+              <small>Dosya karşılaştırması</small>
             </article>
             <article class="metric media">
               <span>Gönderi</span>
               <strong id="metric-media">-</strong>
+              <small id="delta-media">Canlı veri bekleniyor</small>
             </article>
           </div>
 
@@ -178,9 +184,9 @@
             <div class="panel-head">
               <div>
                 <h3>Takipçi Akışı</h3>
-                <p id="chart-note">Snapshot verisine göre güncellenir.</p>
+                <p id="chart-note">Snapshot veya resmi Meta metriği geldikçe çizilir.</p>
               </div>
-              <span id="refresh-badge" class="status-pill">5 sn</span>
+              <span id="refresh-badge" class="status-pill">2 sn</span>
             </div>
             <canvas id="followers-chart" width="900" height="280"></canvas>
           </section>
@@ -195,6 +201,7 @@
                 <span id="profile-live-status" class="status-pill amber">Bekliyor</span>
               </div>
               <div id="profile-metric-list" class="compact-stats"></div>
+              <div id="profile-bio-box" class="bio-box"></div>
               <button id="refresh-profile-btn" class="ghost-btn" type="button">Canlı Metrikleri Yenile</button>
             </section>
 
@@ -212,10 +219,10 @@
                 <span id="verify-status" class="status-pill amber">Bekliyor</span>
               </div>
               <form id="quick-upload-form" class="upload-form">
-                <input id="quick-file" type="file" name="snapshot" />
+                <input id="quick-file" type="file" name="snapshot" accept=".zip,.json,.html,.htm,.csv,.txt,.tsv,.xlsx" />
                 <button class="primary-btn" type="submit">Yükle ve Analiz Et</button>
               </form>
-              <p id="upload-hint" class="muted">ZIP, JSON, HTML, CSV, TXT ve XLSX okunur.</p>
+              <p id="upload-hint" class="muted">ZIP, JSON, HTML, CSV, TXT, TSV ve XLSX okunur.</p>
             </section>
           </div>
         </section>
@@ -237,13 +244,23 @@
           <section class="panel full-panel upload-large">
             <div class="panel-head">
               <div>
-                <h3>Mobil Yükleme</h3>
-                <p>Telefonundan dosya seçip aynı panel hesabına işleyebilirsin.</p>
+                <h3>Instagram Verilerini Yükle</h3>
+                <p>Telefonundan export ZIP dosyasını seçip aynı panel hesabına işleyebilirsin.</p>
               </div>
               <span class="status-pill">Snapshot</span>
             </div>
+            <div class="export-links">
+              <a id="download-accounts-link" class="link-card" href="https://accountscenter.instagram.com/info_and_permissions/dyi/" target="_blank" rel="noreferrer">
+                <span>Instagram export sayfası</span>
+                <strong>Dosya iste</strong>
+              </a>
+              <a id="download-help-link" class="link-card" href="https://www.facebook.com/help/instagram/181231772500920" target="_blank" rel="noreferrer">
+                <span>Resmi yardım</span>
+                <strong>Nereden alınır?</strong>
+              </a>
+            </div>
             <form id="upload-form" class="drop-zone">
-              <input id="snapshot-file" type="file" name="snapshot" />
+              <input id="snapshot-file" type="file" name="snapshot" accept=".zip,.json,.html,.htm,.csv,.txt,.tsv,.xlsx" />
               <button class="primary-btn" type="submit">Dosyayı Yükle</button>
             </form>
             <div id="upload-result" class="upload-result"></div>
@@ -255,9 +272,23 @@
             <section class="panel">
               <div class="panel-head">
                 <h3>Kullanıcı Adı Değişenler</h3>
-                <span class="status-pill">Export</span>
+                <span class="status-pill">Export/API</span>
               </div>
               <div id="username-change-list" class="list-table"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Bio Değişimleri</h3>
+                <span class="status-pill teal">Canlı</span>
+              </div>
+              <div id="bio-change-list" class="list-table"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Metrik Geçmişi</h3>
+                <span class="status-pill">Son 30 kayıt</span>
+              </div>
+              <div id="live-history-list" class="list-table"></div>
             </section>
             <section class="panel">
               <div class="panel-head">
@@ -275,7 +306,7 @@
               <div class="panel-head">
                 <div>
                   <h3>Panel Profilin</h3>
-                  <p>Adını, soyadını ve Instagram kullanıcı adını güncelle.</p>
+                  <p>Ad ve soyad panel hesabına aittir. Instagram kullanıcı adı resmi API veya export ile izlenir.</p>
                 </div>
                 <span class="status-pill teal">Hesap</span>
               </div>
@@ -288,16 +319,35 @@
                   <span>Soyad</span>
                   <input id="profile-last-name" name="lastName" required />
                 </label>
-                <label>
-                  <span>Instagram kullanıcı adı</span>
-                  <div class="username-field">
-                    <span>@</span>
-                    <input id="profile-username" name="instagramUsername" required />
-                  </div>
-                </label>
                 <button class="primary-btn" type="submit">Profili Güncelle</button>
               </form>
               <p id="profile-message" class="message"></p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Panel Şifresi</h3>
+                <span class="status-pill">Güvenlik</span>
+              </div>
+              <form id="password-form" class="profile-form">
+                <label>
+                  <span>Mevcut panel şifresi</span>
+                  <input id="current-password" type="password" autocomplete="current-password" required />
+                </label>
+                <label>
+                  <span>Yeni panel şifresi</span>
+                  <input id="new-password" type="password" autocomplete="new-password" required />
+                </label>
+                <ul id="profile-password-rules" class="password-rules">
+                  <li data-rule="length">En az 5 karakter</li>
+                  <li data-rule="upper">Büyük harf</li>
+                  <li data-rule="lower">Küçük harf</li>
+                  <li data-rule="number">Sayı</li>
+                  <li data-rule="symbol">Sembol</li>
+                </ul>
+                <button class="primary-btn" type="submit">Şifreyi Değiştir</button>
+              </form>
+              <p id="password-message" class="message"></p>
             </section>
 
             <section class="panel">
@@ -315,6 +365,7 @@
         <button class="mobile-item active" type="button" data-view="overview">Genel</button>
         <button class="mobile-item" type="button" data-view="losses">Çıkanlar</button>
         <button class="mobile-item" type="button" data-view="upload">Yükle</button>
+        <button class="mobile-item" type="button" data-view="changes">Değişen</button>
         <button class="mobile-item" type="button" data-view="profile">Profil</button>
       </nav>
     </main>

@@ -5,8 +5,11 @@ const state = {
   authMode: "login",
   registerStep: 1,
   refreshTimer: null,
+  liveRefreshTimer: null,
   lastUsernameCheck: null
 };
+
+const EXPORT_URL = "https://accountscenter.instagram.com/info_and_permissions/dyi/";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -65,6 +68,13 @@ function formatMetric(value) {
   return typeof value === "number" ? value.toLocaleString("tr-TR") : "-";
 }
 
+function formatDelta(value) {
+  if (typeof value !== "number") return "Önceki ölçüm yok";
+  if (value === 0) return "Değişmedi";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toLocaleString("tr-TR")} son ölçüm`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     credentials: "include",
@@ -113,10 +123,11 @@ function passwordState(password) {
   };
 }
 
-function updatePasswordRules() {
-  const rules = passwordState($("#register-password").value);
+function updatePasswordRules(rootSelector, password) {
+  const rules = passwordState(password);
+  const root = $(rootSelector);
   for (const [key, ok] of Object.entries(rules)) {
-    $(`[data-rule="${key}"]`).classList.toggle("ok", ok);
+    root.querySelector(`[data-rule="${key}"]`)?.classList.toggle("ok", ok);
   }
   return Object.values(rules).every(Boolean);
 }
@@ -148,10 +159,17 @@ async function checkUsername() {
   }
 }
 
+function clearTimers() {
+  clearInterval(state.refreshTimer);
+  clearInterval(state.liveRefreshTimer);
+  state.refreshTimer = null;
+  state.liveRefreshTimer = null;
+}
+
 function showAuth() {
   $("#auth-screen").classList.remove("hidden");
   $("#app-screen").classList.add("hidden");
-  clearInterval(state.refreshTimer);
+  clearTimers();
 }
 
 function showApp(payload) {
@@ -160,8 +178,13 @@ function showApp(payload) {
   $("#auth-screen").classList.add("hidden");
   $("#app-screen").classList.remove("hidden");
   renderDashboard();
-  clearInterval(state.refreshTimer);
-  state.refreshTimer = setInterval(refreshDashboard, 5000);
+  clearTimers();
+  state.refreshTimer = setInterval(refreshDashboard, 2000);
+
+  if (state.dashboard.capabilities?.metaMetricsEnabled) {
+    refreshLiveMetrics({ silent: true });
+    state.liveRefreshTimer = setInterval(() => refreshLiveMetrics({ silent: true }), 60000);
+  }
 }
 
 async function refreshDashboard() {
@@ -186,7 +209,7 @@ function setView(view) {
   };
   $("#page-title").textContent = titles[view] || "Genel Özet";
   $$(".view").forEach((element) => element.classList.toggle("active", element.id === `${view}-view`));
-  $$(".nav-item, .mobile-item, .command-tile").forEach((element) => {
+  $$(".nav-item, .mobile-item, [data-view-link]").forEach((element) => {
     element.classList.toggle("active", (element.dataset.view || element.dataset.viewLink) === view);
   });
 }
@@ -227,7 +250,7 @@ function eventRows(events) {
 
 function renderDashboard() {
   if (!state.dashboard) return;
-  const { user, kpis, analysis, events, chart } = state.dashboard;
+  const { user, kpis, analysis, events, chart, deltas, capabilities } = state.dashboard;
   $("#user-name").textContent = `${user.firstName} ${user.lastName}`;
   $("#user-handle").textContent = user.displayUsername;
   $("#metric-followers").textContent = formatMetric(kpis.followers);
@@ -235,6 +258,10 @@ function renderDashboard() {
   $("#metric-media").textContent = formatMetric(kpis.mediaCount);
   $("#metric-lost").textContent = kpis.lostLastImport.toLocaleString("tr-TR");
   $("#metric-gained").textContent = kpis.gainedLastImport.toLocaleString("tr-TR");
+  $("#delta-followers").textContent = formatDelta(deltas?.followers);
+  $("#delta-following").textContent = formatDelta(deltas?.following);
+  $("#delta-media").textContent = formatDelta(deltas?.media);
+  $("#refresh-badge").textContent = `${capabilities?.uiRefreshSeconds ?? 2} sn`;
   $("#verify-status").textContent = user.verifiedAt ? "Doğrulandı" : "Bekliyor";
   $("#verify-status").className = `status-pill ${user.verifiedAt ? "teal" : "amber"}`;
 
@@ -256,14 +283,16 @@ function renderProfileMetrics() {
   $("#profile-source-note").textContent = metric
     ? `Son kontrol: ${formatDate(metric.capturedAt)}`
     : enabled
-      ? "Resmi Meta bağlantısı hazır."
-      : "Dosya yüklemeden canlı metrik için resmi Meta API bağlantısı gerekir.";
+      ? "Resmi Meta bağlantısı hazır. Metrikler otomatik izlenir."
+      : "Canlı metrik için resmi Meta API bağlantısı gerekir; Instagram web sayfası arka planda kazınmaz.";
 
   const rows = [
     ["Takipçi", formatMetric(metric?.followersCount)],
     ["Takip edilen", formatMetric(metric?.followsCount)],
     ["Gönderi", formatMetric(metric?.mediaCount)],
-    ["Profil adı", metric?.name || "-"]
+    ["Kullanıcı adı", metric?.username ? `@${metric.username}` : state.dashboard.user.displayUsername],
+    ["Profil adı", metric?.name || "-"],
+    ["Kaynak", metric?.source || "-"]
   ];
   $("#profile-metric-list").innerHTML = rows
     .map(
@@ -275,6 +304,13 @@ function renderProfileMetrics() {
       `
     )
     .join("");
+
+  $("#profile-bio-box").innerHTML = `
+    <span>Bio</span>
+    <p>${escapeHtml(metric?.biography || "Canlı bio verisi yok.")}</p>
+    <span>Web sitesi</span>
+    <strong>${escapeHtml(metric?.website || "-")}</strong>
+  `;
 }
 
 function renderLossTable() {
@@ -286,18 +322,34 @@ function renderLossTable() {
 }
 
 function renderChanges() {
-  const events = state.dashboard.events.filter((event) =>
+  const usernameEvents = state.dashboard.events.filter((event) =>
     ["username_change", "account_username_changed"].includes(event.type)
   );
-  const rows = events.map((event) => ({
+  const usernameRows = usernameEvents.map((event) => ({
     title:
       event.type === "account_username_changed"
-        ? `@${event.previousUsername} → @${event.username}`
+        ? `@${event.previousUsername} -> @${event.username}`
         : `@${event.username}`,
-    subtitle: event.type === "account_username_changed" ? "Panel hesabı güncellendi" : "Export içinde bulundu",
+    subtitle: event.type === "account_username_changed" ? "Panel hesabı/API ile güncellendi" : "Export içinde bulundu",
     meta: formatDate(event.changedAt || event.detectedAt)
   }));
-  renderRows($("#username-change-list"), rows, "Kullanıcı adı değişikliği bulunmadı.");
+  renderRows($("#username-change-list"), usernameRows, "Kullanıcı adı değişikliği bulunmadı.");
+
+  const bioRows = state.dashboard.events
+    .filter((event) => event.type === "biography_changed")
+    .map((event) => ({
+      title: `@${event.username}`,
+      subtitle: `Eski: ${event.previousBiography || "-"} | Yeni: ${event.biography || "-"}`,
+      meta: formatDate(event.detectedAt)
+    }));
+  renderRows($("#bio-change-list"), bioRows, "Bio değişimi bulunmadı.");
+
+  const historyRows = (state.dashboard.profileHistory ?? []).map((metric) => ({
+    title: `@${metric.username || state.dashboard.user.instagramUsername}`,
+    subtitle: `Takipçi ${formatMetric(metric.followersCount)} | Takip edilen ${formatMetric(metric.followsCount)} | Gönderi ${formatMetric(metric.mediaCount)}`,
+    meta: formatDate(metric.capturedAt)
+  }));
+  renderRows($("#live-history-list"), historyRows, "Canlı metrik geçmişi henüz yok.");
 }
 
 function renderRelationshipStats(analysis) {
@@ -322,10 +374,10 @@ function renderRelationshipStats(analysis) {
 function renderProfileForm() {
   const user = state.dashboard.user;
   if (!user) return;
-  if (document.activeElement?.closest?.("#profile-form")) return;
-  $("#profile-first-name").value = user.firstName;
-  $("#profile-last-name").value = user.lastName;
-  $("#profile-username").value = user.instagramUsername;
+  if (!document.activeElement?.closest?.("#profile-form")) {
+    $("#profile-first-name").value = user.firstName;
+    $("#profile-last-name").value = user.lastName;
+  }
 
   const previous = user.previousUsernames ?? [];
   const rows = previous.map((username) => ({
@@ -340,7 +392,7 @@ function drawChart(points = []) {
   const canvas = $("#followers-chart");
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.max(320, rect.width) * dpr;
+  canvas.width = Math.max(320, Math.floor(rect.width)) * dpr;
   canvas.height = 280 * dpr;
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
@@ -349,9 +401,9 @@ function drawChart(points = []) {
   const pad = 34;
 
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#0b111a";
+  ctx.fillStyle = "#090910";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#263241";
+  ctx.strokeStyle = "#2a2a36";
   ctx.lineWidth = 1;
 
   for (let i = 0; i < 4; i += 1) {
@@ -363,14 +415,14 @@ function drawChart(points = []) {
   }
 
   if (!points.length) {
-    ctx.fillStyle = "#9ca8b8";
+    ctx.fillStyle = "#a7a7b5";
     ctx.font = "14px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("Snapshot bekleniyor", width / 2, height / 2);
+    ctx.fillText("Canlı veri veya snapshot bekleniyor", width / 2, height / 2);
     return;
   }
 
-  const values = points.map((point) => Number(point.count));
+  const values = points.map((point) => Number(point.count)).filter(Number.isFinite);
   let min = Math.min(...values);
   let max = Math.max(...values);
   if (min === max) {
@@ -383,8 +435,13 @@ function drawChart(points = []) {
     return pad + ((width - pad * 2) / (points.length - 1)) * index;
   };
   const yFor = (value) => height - pad - ((value - min) / (max - min)) * (height - pad * 2);
+  const gradient = ctx.createLinearGradient(pad, 0, width - pad, 0);
+  gradient.addColorStop(0, "#feda75");
+  gradient.addColorStop(0.35, "#e1306c");
+  gradient.addColorStop(0.7, "#833ab4");
+  gradient.addColorStop(1, "#4f5bd5");
 
-  ctx.strokeStyle = "#22d3ee";
+  ctx.strokeStyle = gradient;
   ctx.lineWidth = 3;
   ctx.beginPath();
   points.forEach((point, index) => {
@@ -398,16 +455,16 @@ function drawChart(points = []) {
   points.forEach((point, index) => {
     const x = xFor(index);
     const y = yFor(Number(point.count));
-    ctx.fillStyle = "#07090d";
+    ctx.fillStyle = "#050509";
     ctx.beginPath();
     ctx.arc(x, y, 5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#22d3ee";
+    ctx.strokeStyle = "#e1306c";
     ctx.lineWidth = 2;
     ctx.stroke();
   });
 
-  ctx.fillStyle = "#9ca8b8";
+  ctx.fillStyle = "#a7a7b5";
   ctx.font = "12px system-ui";
   ctx.textAlign = "left";
   ctx.fillText(max.toLocaleString("tr-TR"), 10, pad + 4);
@@ -437,6 +494,40 @@ async function uploadSnapshot(form, resultElement) {
   }
 }
 
+async function refreshLiveMetrics({ silent = false } = {}) {
+  const button = $("#refresh-profile-btn");
+  if (!state.user) return;
+  if (!silent && button) {
+    button.disabled = true;
+    button.textContent = "Kontrol ediliyor...";
+  }
+  try {
+    const payload = await api("/api/profile/refresh", { method: "POST" });
+    state.dashboard = payload.dashboard;
+    state.user = payload.dashboard.user;
+    renderDashboard();
+  } catch (error) {
+    $("#profile-source-note").textContent = error.message;
+    $("#profile-live-status").textContent = "Bağlantı yok";
+    $("#profile-live-status").className = "status-pill amber";
+  } finally {
+    if (!silent && button) {
+      button.disabled = false;
+      button.textContent = "Canlı Metrikleri Yenile";
+    }
+  }
+}
+
+function handleAction(action) {
+  if (action === "live-refresh") {
+    refreshLiveMetrics();
+    return;
+  }
+  if (action === "open-export") {
+    window.open(EXPORT_URL, "_blank", "noopener,noreferrer");
+  }
+}
+
 function bindEvents() {
   $("#login-tab").addEventListener("click", () => setAuthMode("login"));
   $("#register-tab").addEventListener("click", () => setAuthMode("register"));
@@ -459,7 +550,9 @@ function bindEvents() {
     $("#username-check").className = "form-status muted";
   });
   $("#register-username").addEventListener("blur", checkUsername);
-  $("#register-password").addEventListener("input", updatePasswordRules);
+  $("#register-password").addEventListener("input", (event) => {
+    updatePasswordRules("#password-rules", event.target.value);
+  });
 
   $("#profile-first-name").addEventListener("input", (event) => {
     event.target.value = titleNameLive(event.target.value);
@@ -473,8 +566,8 @@ function bindEvents() {
   $("#profile-last-name").addEventListener("blur", (event) => {
     event.target.value = upperLastName(event.target.value);
   });
-  $("#profile-username").addEventListener("input", (event) => {
-    event.target.value = normalizeUsername(event.target.value);
+  $("#new-password").addEventListener("input", (event) => {
+    updatePasswordRules("#profile-password-rules", event.target.value);
   });
 
   $$("[data-next-step]").forEach((button) => {
@@ -512,7 +605,7 @@ function bindEvents() {
 
   $("#register-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!updatePasswordRules()) {
+    if (!updatePasswordRules("#password-rules", $("#register-password").value)) {
       setMessage("Şifre kurallarını tamamlayın.", "error");
       return;
     }
@@ -551,8 +644,7 @@ function bindEvents() {
         method: "PATCH",
         body: JSON.stringify({
           firstName: $("#profile-first-name").value,
-          lastName: $("#profile-last-name").value,
-          instagramUsername: $("#profile-username").value
+          lastName: $("#profile-last-name").value
         })
       });
       state.dashboard = payload.dashboard;
@@ -566,27 +658,42 @@ function bindEvents() {
     }
   });
 
-  $("#refresh-profile-btn").addEventListener("click", async () => {
-    const button = $("#refresh-profile-btn");
-    button.disabled = true;
-    button.textContent = "Kontrol ediliyor...";
+  $("#password-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = $("#password-message");
+    const newPassword = $("#new-password").value;
+    if (!updatePasswordRules("#profile-password-rules", newPassword)) {
+      message.textContent = "Yeni şifre kurallarını tamamlayın.";
+      message.className = "message error";
+      return;
+    }
+    message.textContent = "Şifre değiştiriliyor...";
+    message.className = "message";
     try {
-      const payload = await api("/api/profile/refresh", { method: "POST" });
-      state.dashboard = payload.dashboard;
-      state.user = payload.dashboard.user;
-      renderDashboard();
+      await api("/api/account/password", {
+        method: "PATCH",
+        body: JSON.stringify({
+          currentPassword: $("#current-password").value,
+          newPassword
+        })
+      });
+      event.currentTarget.reset();
+      updatePasswordRules("#profile-password-rules", "");
+      message.textContent = "Panel şifresi değiştirildi.";
+      message.className = "message success";
     } catch (error) {
-      $("#profile-source-note").textContent = error.message;
-      $("#profile-live-status").textContent = "Bağlantı yok";
-      $("#profile-live-status").className = "status-pill amber";
-    } finally {
-      button.disabled = false;
-      button.textContent = "Canlı Metrikleri Yenile";
+      message.textContent = error.message;
+      message.className = "message error";
     }
   });
 
+  $("#refresh-profile-btn").addEventListener("click", () => refreshLiveMetrics());
+
   $$(".nav-item, .mobile-item, [data-view-link]").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view || button.dataset.viewLink));
+  });
+  $$("[data-action]").forEach((button) => {
+    button.addEventListener("click", () => handleAction(button.dataset.action));
   });
 
   $("#loss-search").addEventListener("input", renderLossTable);
