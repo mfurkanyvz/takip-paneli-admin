@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
+import connectPgSimple from "connect-pg-simple";
 import express from "express";
 import session from "express-session";
 import helmet from "helmet";
@@ -31,6 +32,10 @@ const port = Number(process.env.PORT ?? 3000);
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const app = express();
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 const upload = multer({
   dest: uploadDir,
   limits: {
@@ -41,10 +46,22 @@ const upload = multer({
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+const PgSession = connectPgSimple(session);
+const sessionStore = store.pool
+  ? new PgSession({
+      pool: store.pool,
+      tableName: "panel_sessions",
+      createTableIfMissing: true
+    })
+  : undefined;
+
 app.use(
   session({
     name: "takip_panel_sid",
+    store: sessionStore,
     secret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
+    proxy: process.env.NODE_ENV === "production",
     resave: false,
     saveUninitialized: false,
     cookie: {

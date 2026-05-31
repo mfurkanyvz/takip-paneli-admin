@@ -116,12 +116,35 @@
           <div>
             <p class="eyebrow">Canlı Panel</p>
             <h2 id="page-title">Genel Özet</h2>
+            <span class="layout-badge desktop-only">Web Paneli</span>
+            <span class="layout-badge mobile-only">Mobil Panel</span>
           </div>
           <div class="user-chip">
             <span id="user-name">-</span>
             <strong id="user-handle">@-</strong>
           </div>
         </header>
+
+        <section class="desktop-commandbar desktop-only">
+          <button class="command-tile active" type="button" data-view-link="overview">
+            <span>Kontrol Merkezi</span>
+            <strong>Web görünümü</strong>
+          </button>
+          <button class="command-tile" type="button" data-view-link="losses">
+            <span>Takipçi Kaybı</span>
+            <strong>Detaylı tablo</strong>
+          </button>
+          <button class="command-tile" type="button" data-view-link="upload">
+            <span>Snapshot</span>
+            <strong>Dosya analizi</strong>
+          </button>
+        </section>
+
+        <section class="mobile-quick-actions mobile-only">
+          <button type="button" data-view-link="upload">Yükle</button>
+          <button type="button" data-view-link="losses">Çıkanlar</button>
+          <button type="button" data-view-link="changes">Diğer</button>
+        </section>
 
         <section id="overview-view" class="view active">
           <div class="kpi-grid">

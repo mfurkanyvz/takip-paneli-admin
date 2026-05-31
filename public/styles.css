@@ -48,6 +48,10 @@ button {
   display: none !important;
 }
 
+.mobile-only {
+  display: none !important;
+}
+
 .auth-screen {
   width: 100%;
   min-height: 100vh;
@@ -381,6 +385,21 @@ input:focus {
   margin-bottom: 20px;
 }
 
+.layout-badge {
+  width: fit-content;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 0 10px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .eyebrow {
   font-size: 13px;
   margin-bottom: 4px;
@@ -412,6 +431,41 @@ input:focus {
 .view.active {
   display: grid;
   gap: 18px;
+}
+
+.desktop-commandbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.command-tile {
+  min-height: 72px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0b111a;
+  color: var(--text);
+  text-align: left;
+}
+
+.command-tile span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.command-tile strong {
+  font-size: 15px;
+}
+
+.command-tile.active,
+.command-tile:hover {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.08);
 }
 
 .kpi-grid {
@@ -598,6 +652,14 @@ input:focus {
 }
 
 @media (max-width: 980px) {
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: grid !important;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -608,10 +670,19 @@ input:focus {
 
   .workspace {
     padding: 18px 14px 82px;
+    background: #06080d;
   }
 
   .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     align-items: flex-start;
+    margin: -18px -14px 14px;
+    padding: 18px 14px 12px;
+    background: rgba(6, 8, 13, 0.95);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
   }
 
   .kpi-grid {
@@ -620,6 +691,25 @@ input:focus {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mobile-quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .mobile-quick-actions button {
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 800;
+  }
+
+  .chart-panel canvas {
+    height: 220px;
   }
 
   .mobile-nav {

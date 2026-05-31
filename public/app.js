@@ -32,6 +32,18 @@ function upperLastName(value = "") {
   return String(value).trim().replace(/\s+/g, " ").toLocaleUpperCase("tr-TR");
 }
 
+function preserveTrailingSpace(original, formatted) {
+  return /\s$/.test(original) && formatted ? `${formatted} ` : formatted;
+}
+
+function titleNameLive(value = "") {
+  return preserveTrailingSpace(value, titleName(value));
+}
+
+function upperLastNameLive(value = "") {
+  return preserveTrailingSpace(value, upperLastName(value));
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -376,9 +388,15 @@ function bindEvents() {
   $("#register-tab").addEventListener("click", () => setAuthMode("register"));
 
   $("#first-name").addEventListener("input", (event) => {
+    event.target.value = titleNameLive(event.target.value);
+  });
+  $("#first-name").addEventListener("blur", (event) => {
     event.target.value = titleName(event.target.value);
   });
   $("#last-name").addEventListener("input", (event) => {
+    event.target.value = upperLastNameLive(event.target.value);
+  });
+  $("#last-name").addEventListener("blur", (event) => {
     event.target.value = upperLastName(event.target.value);
   });
   $("#register-username").addEventListener("input", (event) => {
