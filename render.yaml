@@ -13,10 +13,6 @@ services:
       - key: UPLOAD_LIMIT_MB
         value: "100"
       - key: DATA_FILE
-        value: /var/data/db.json
+        value: ./data/db.json
       - key: UPLOAD_DIR
-        value: /var/data/uploads
-    disk:
-      name: takip-paneli-data
-      mountPath: /var/data
-      sizeGB: 1
+        value: ./uploads
