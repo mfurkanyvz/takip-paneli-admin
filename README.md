@@ -12,6 +12,7 @@ Siyah temalı, mobil uyumlu, çok kullanıcılı takipçi snapshot analiz paneli
 - Takipten çıkanları, yeni takipçileri, karşılıksız takipleri ve bekleyen istekleri listeler.
 - Panel ekranı 5 saniyede bir yenilenir.
 - Kullanıcı adı değişimi, dosyada güvenilir hesap ID bilgisi varsa otomatik işlenir.
+- `META_ACCESS_TOKEN` ve `META_IG_BUSINESS_ACCOUNT_ID` eklenirse resmi Meta API ile dosya yüklemeden takipçi, takip edilen ve gönderi sayısı metrikleri yenilenir.
 
 ## Net Sınırlar
 
@@ -58,6 +59,9 @@ DATA_FILE=/var/data/db.json
 UPLOAD_DIR=/var/data/uploads
 UPLOAD_LIMIT_MB=100
 DATABASE_URL=postgresql://...
+META_ACCESS_TOKEN=...
+META_IG_BUSINESS_ACCOUNT_ID=...
+META_GRAPH_VERSION=v23.0
 ```
 
 Tamamen ücretsiz kalmak için Render Free Web Service + Neon/Supabase Free Postgres kullan. Render Free web servislerinde kalıcı disk yoktur; `DATABASE_URL` eklemezsen servis yeniden başladığında lokal JSON veri kaybolabilir.

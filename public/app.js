@@ -61,6 +61,10 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function formatMetric(value) {
+  return typeof value === "number" ? value.toLocaleString("tr-TR") : "-";
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     credentials: "include",
@@ -177,12 +181,13 @@ function setView(view) {
     overview: "Genel Özet",
     losses: "Takipten Çıkanlar",
     upload: "Snapshot Yükle",
-    changes: "Değişenler"
+    changes: "Değişenler",
+    profile: "Profil"
   };
   $("#page-title").textContent = titles[view] || "Genel Özet";
   $$(".view").forEach((element) => element.classList.toggle("active", element.id === `${view}-view`));
-  $$(".nav-item, .mobile-item").forEach((element) => {
-    element.classList.toggle("active", element.dataset.view === view);
+  $$(".nav-item, .mobile-item, .command-tile").forEach((element) => {
+    element.classList.toggle("active", (element.dataset.view || element.dataset.viewLink) === view);
   });
 }
 
@@ -225,8 +230,9 @@ function renderDashboard() {
   const { user, kpis, analysis, events, chart } = state.dashboard;
   $("#user-name").textContent = `${user.firstName} ${user.lastName}`;
   $("#user-handle").textContent = user.displayUsername;
-  $("#metric-followers").textContent = kpis.followers.toLocaleString("tr-TR");
-  $("#metric-following").textContent = kpis.following.toLocaleString("tr-TR");
+  $("#metric-followers").textContent = formatMetric(kpis.followers);
+  $("#metric-following").textContent = formatMetric(kpis.following);
+  $("#metric-media").textContent = formatMetric(kpis.mediaCount);
   $("#metric-lost").textContent = kpis.lostLastImport.toLocaleString("tr-TR");
   $("#metric-gained").textContent = kpis.gainedLastImport.toLocaleString("tr-TR");
   $("#verify-status").textContent = user.verifiedAt ? "Doğrulandı" : "Bekliyor";
@@ -237,7 +243,38 @@ function renderDashboard() {
   renderLossTable();
   renderChanges();
   renderRelationshipStats(analysis);
+  renderProfileMetrics();
+  renderProfileForm();
   drawChart(chart);
+}
+
+function renderProfileMetrics() {
+  const metric = state.dashboard.profileMetric;
+  const enabled = state.dashboard.capabilities?.metaMetricsEnabled;
+  $("#profile-live-status").textContent = metric ? "Canlı" : enabled ? "Hazır" : "Bağlantı yok";
+  $("#profile-live-status").className = `status-pill ${metric ? "teal" : "amber"}`;
+  $("#profile-source-note").textContent = metric
+    ? `Son kontrol: ${formatDate(metric.capturedAt)}`
+    : enabled
+      ? "Resmi Meta bağlantısı hazır."
+      : "Dosya yüklemeden canlı metrik için resmi Meta API bağlantısı gerekir.";
+
+  const rows = [
+    ["Takipçi", formatMetric(metric?.followersCount)],
+    ["Takip edilen", formatMetric(metric?.followsCount)],
+    ["Gönderi", formatMetric(metric?.mediaCount)],
+    ["Profil adı", metric?.name || "-"]
+  ];
+  $("#profile-metric-list").innerHTML = rows
+    .map(
+      ([label, value]) => `
+        <div class="stat-line">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(String(value))}</strong>
+        </div>
+      `
+    )
+    .join("");
 }
 
 function renderLossTable() {
@@ -280,6 +317,23 @@ function renderRelationshipStats(analysis) {
       `
     )
     .join("");
+}
+
+function renderProfileForm() {
+  const user = state.dashboard.user;
+  if (!user) return;
+  if (document.activeElement?.closest?.("#profile-form")) return;
+  $("#profile-first-name").value = user.firstName;
+  $("#profile-last-name").value = user.lastName;
+  $("#profile-username").value = user.instagramUsername;
+
+  const previous = user.previousUsernames ?? [];
+  const rows = previous.map((username) => ({
+    title: `@${username}`,
+    subtitle: "Bu eski kullanıcı adıyla da giriş yapabilirsin.",
+    meta: "Eski ad"
+  }));
+  renderRows($("#previous-usernames"), rows, "Henüz eski kullanıcı adı yok.");
 }
 
 function drawChart(points = []) {
@@ -407,6 +461,22 @@ function bindEvents() {
   $("#register-username").addEventListener("blur", checkUsername);
   $("#register-password").addEventListener("input", updatePasswordRules);
 
+  $("#profile-first-name").addEventListener("input", (event) => {
+    event.target.value = titleNameLive(event.target.value);
+  });
+  $("#profile-first-name").addEventListener("blur", (event) => {
+    event.target.value = titleName(event.target.value);
+  });
+  $("#profile-last-name").addEventListener("input", (event) => {
+    event.target.value = upperLastNameLive(event.target.value);
+  });
+  $("#profile-last-name").addEventListener("blur", (event) => {
+    event.target.value = upperLastName(event.target.value);
+  });
+  $("#profile-username").addEventListener("input", (event) => {
+    event.target.value = normalizeUsername(event.target.value);
+  });
+
   $$("[data-next-step]").forEach((button) => {
     button.addEventListener("click", async () => {
       const next = Number(button.dataset.nextStep);
@@ -462,11 +532,57 @@ function bindEvents() {
     }
   });
 
-  $("#logout-btn").addEventListener("click", async () => {
-    await api("/api/auth/logout", { method: "POST" }).catch(() => {});
-    state.user = null;
-    state.dashboard = null;
-    showAuth();
+  $$(".logout-action").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+      state.user = null;
+      state.dashboard = null;
+      showAuth();
+    });
+  });
+
+  $("#profile-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = $("#profile-message");
+    message.textContent = "Güncelleniyor...";
+    message.className = "message";
+    try {
+      const payload = await api("/api/account/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          firstName: $("#profile-first-name").value,
+          lastName: $("#profile-last-name").value,
+          instagramUsername: $("#profile-username").value
+        })
+      });
+      state.dashboard = payload.dashboard;
+      state.user = payload.user;
+      renderDashboard();
+      message.textContent = "Profil güncellendi.";
+      message.className = "message success";
+    } catch (error) {
+      message.textContent = error.message;
+      message.className = "message error";
+    }
+  });
+
+  $("#refresh-profile-btn").addEventListener("click", async () => {
+    const button = $("#refresh-profile-btn");
+    button.disabled = true;
+    button.textContent = "Kontrol ediliyor...";
+    try {
+      const payload = await api("/api/profile/refresh", { method: "POST" });
+      state.dashboard = payload.dashboard;
+      state.user = payload.dashboard.user;
+      renderDashboard();
+    } catch (error) {
+      $("#profile-source-note").textContent = error.message;
+      $("#profile-live-status").textContent = "Bağlantı yok";
+      $("#profile-live-status").className = "status-pill amber";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Canlı Metrikleri Yenile";
+    }
   });
 
   $$(".nav-item, .mobile-item, [data-view-link]").forEach((button) => {

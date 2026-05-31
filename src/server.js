@@ -120,6 +120,7 @@ function snapshotCard(snapshot) {
 
 function dashboardFor(user) {
   const latest = store.latestSnapshotForUser(user.id);
+  const profileMetric = store.latestProfileMetricForUser(user.id);
   const analysis = summarizeSnapshot(latest);
   const events = store.eventsForUser(user.id);
   const chart = store.followerCountsForUser(user.id);
@@ -134,9 +135,11 @@ function dashboardFor(user) {
     events: events.slice(0, 200),
     chart,
     snapshots,
+    profileMetric,
     kpis: {
-      followers: analysis.counts.followers,
-      following: analysis.counts.following,
+      followers: latest ? analysis.counts.followers : (profileMetric?.followersCount ?? null),
+      following: latest ? analysis.counts.following : (profileMetric?.followsCount ?? null),
+      mediaCount: profileMetric?.mediaCount ?? null,
       pendingRequests: analysis.counts.pendingRequests,
       lostLastImport: analysis.lost.length,
       gainedLastImport: analysis.gained.length,
@@ -148,9 +151,36 @@ function dashboardFor(user) {
       automaticFollowerList: false,
       publicProfileScraping: false,
       officialApiReady: true,
+      metaMetricsEnabled: Boolean(process.env.META_ACCESS_TOKEN && process.env.META_IG_BUSINESS_ACCOUNT_ID),
       note: "Panel 5 saniyede bir yenilenir. İsim isim takipten çıkan analizi snapshot/export karşılaştırmasıyla çalışır."
     }
   };
+}
+
+async function fetchOfficialProfileMetrics(username) {
+  const token = process.env.META_ACCESS_TOKEN;
+  const businessAccountId = process.env.META_IG_BUSINESS_ACCOUNT_ID;
+  if (!token || !businessAccountId) {
+    const error = new Error("Canlı metrik için resmi Meta API bağlantısı gerekiyor.");
+    error.status = 501;
+    throw error;
+  }
+
+  const version = process.env.META_GRAPH_VERSION ?? "v23.0";
+  const fields = `business_discovery.username(${username}){username,name,followers_count,follows_count,media_count,profile_picture_url}`;
+  const url = new URL(`https://graph.facebook.com/${version}/${businessAccountId}`);
+  url.searchParams.set("fields", fields);
+  url.searchParams.set("access_token", token);
+
+  const response = await fetch(url);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message ?? "Meta API metrikleri alınamadı.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return payload.business_discovery;
 }
 
 app.get("/api/health", (_req, res) => {
@@ -244,6 +274,86 @@ app.get("/api/auth/me", (req, res) => {
 
 app.get("/api/dashboard", requireAuth, (req, res) => {
   res.json(dashboardFor(req.user));
+});
+
+app.post("/api/profile/refresh", requireAuth, async (req, res, next) => {
+  try {
+    const profile = await fetchOfficialProfileMetrics(req.user.instagramUsername);
+    const now = new Date().toISOString();
+    const metric = await store.insert("profileMetrics", {
+      id: uuidv4(),
+      userId: req.user.id,
+      capturedAt: now,
+      username: normalizeInstagramUsername(profile.username ?? req.user.instagramUsername),
+      name: profile.name ?? null,
+      followersCount: profile.followers_count ?? null,
+      followsCount: profile.follows_count ?? null,
+      mediaCount: profile.media_count ?? null,
+      profilePictureUrl: profile.profile_picture_url ?? null,
+      source: "meta_business_discovery"
+    });
+
+    if (typeof metric.followersCount === "number") {
+      await store.insert("followerCounts", {
+        id: uuidv4(),
+        userId: req.user.id,
+        capturedAt: now,
+        count: metric.followersCount,
+        source: "meta_business_discovery"
+      });
+    }
+
+    res.json({ metric, dashboard: dashboardFor(req.user) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/account/profile", requireAuth, async (req, res, next) => {
+  try {
+    const firstName = formatFirstNames(req.body.firstName);
+    const lastName = formatLastName(req.body.lastName);
+    const nextUsername = normalizeInstagramUsername(req.body.instagramUsername);
+
+    if (!firstName || !lastName) return res.status(400).json({ error: "Ad ve soyad zorunlu." });
+    if (!isValidInstagramUsername(nextUsername)) {
+      return res.status(400).json({ error: "Instagram kullanıcı adı formatı uygun değil." });
+    }
+
+    const existing = store.findUserByUsername(nextUsername);
+    if (existing && existing.id !== req.user.id) {
+      return res.status(409).json({ error: "Bu Instagram kullanıcı adı başka bir panel hesabında kullanılıyor." });
+    }
+
+    const previousUsername = req.user.instagramUsername;
+    const usernameChanged = previousUsername !== nextUsername;
+    const updated = await store.update("users", req.user.id, (current) => ({
+      ...current,
+      firstName,
+      lastName,
+      instagramUsername: nextUsername,
+      previousUsernames: usernameChanged
+        ? [...new Set([...(current.previousUsernames ?? []), previousUsername])]
+        : current.previousUsernames ?? [],
+      usernameChangedAt: usernameChanged ? new Date().toISOString() : current.usernameChangedAt
+    }));
+
+    if (usernameChanged) {
+      await store.insert("events", {
+        id: uuidv4(),
+        userId: req.user.id,
+        type: "account_username_changed",
+        username: nextUsername,
+        previousUsername,
+        detectedAt: new Date().toISOString(),
+        confidence: "user_update"
+      });
+    }
+
+    res.json({ user: publicUser(updated), dashboard: dashboardFor(updated) });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/snapshots/upload", requireAuth, upload.single("snapshot"), async (req, res, next) => {

@@ -12,7 +12,7 @@
         <div class="auth-brand">
           <span class="brand-mark">A</span>
           <div>
-            <h1>Admin Paneli</h1>
+            <h1>Instagram Admin Paneli</h1>
             <p id="auth-subtitle">Giriş yap</p>
           </div>
         </div>
@@ -100,15 +100,16 @@
       <aside class="sidebar">
         <div class="side-brand">
           <span class="brand-mark small">A</span>
-          <span>Admin Paneli</span>
+          <span>Instagram Admin Paneli</span>
         </div>
         <nav class="side-nav">
           <button class="nav-item active" type="button" data-view="overview">Genel</button>
           <button class="nav-item" type="button" data-view="losses">Çıkanlar</button>
           <button class="nav-item" type="button" data-view="upload">Yükle</button>
           <button class="nav-item" type="button" data-view="changes">Değişenler</button>
+          <button class="nav-item" type="button" data-view="profile">Profil</button>
         </nav>
-        <button id="logout-btn" class="logout-btn" type="button">Çıkış Yap</button>
+        <button class="logout-btn logout-action" type="button">Çıkış Yap</button>
       </aside>
 
       <section class="workspace">
@@ -120,8 +121,11 @@
             <span class="layout-badge mobile-only">Mobil Panel</span>
           </div>
           <div class="user-chip">
-            <span id="user-name">-</span>
-            <strong id="user-handle">@-</strong>
+            <div>
+              <span id="user-name">-</span>
+              <strong id="user-handle">@-</strong>
+            </div>
+            <button class="top-logout logout-action" type="button">Çıkış</button>
           </div>
         </header>
 
@@ -164,6 +168,10 @@
               <span>Yeni Takipçi</span>
               <strong id="metric-gained">0</strong>
             </article>
+            <article class="metric media">
+              <span>Gönderi</span>
+              <strong id="metric-media">-</strong>
+            </article>
           </div>
 
           <section class="panel chart-panel">
@@ -178,6 +186,18 @@
           </section>
 
           <div class="dashboard-grid">
+            <section class="panel live-profile-panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Canlı Profil Metrikleri</h3>
+                  <p id="profile-source-note">Resmi Meta bağlantısı bekleniyor.</p>
+                </div>
+                <span id="profile-live-status" class="status-pill amber">Bekliyor</span>
+              </div>
+              <div id="profile-metric-list" class="compact-stats"></div>
+              <button id="refresh-profile-btn" class="ghost-btn" type="button">Canlı Metrikleri Yenile</button>
+            </section>
+
             <section class="panel">
               <div class="panel-head">
                 <h3>Kim Takipten Çıktı</h3>
@@ -248,13 +268,54 @@
             </section>
           </div>
         </section>
+
+        <section id="profile-view" class="view">
+          <div class="dashboard-grid profile-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>Panel Profilin</h3>
+                  <p>Adını, soyadını ve Instagram kullanıcı adını güncelle.</p>
+                </div>
+                <span class="status-pill teal">Hesap</span>
+              </div>
+              <form id="profile-form" class="profile-form">
+                <label>
+                  <span>Ad</span>
+                  <input id="profile-first-name" name="firstName" required />
+                </label>
+                <label>
+                  <span>Soyad</span>
+                  <input id="profile-last-name" name="lastName" required />
+                </label>
+                <label>
+                  <span>Instagram kullanıcı adı</span>
+                  <div class="username-field">
+                    <span>@</span>
+                    <input id="profile-username" name="instagramUsername" required />
+                  </div>
+                </label>
+                <button class="primary-btn" type="submit">Profili Güncelle</button>
+              </form>
+              <p id="profile-message" class="message"></p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Eski Kullanıcı Adları</h3>
+                <span class="status-pill">Giriş uyumlu</span>
+              </div>
+              <div id="previous-usernames" class="list-table"></div>
+            </section>
+          </div>
+        </section>
       </section>
 
       <nav class="mobile-nav">
         <button class="mobile-item active" type="button" data-view="overview">Genel</button>
         <button class="mobile-item" type="button" data-view="losses">Çıkanlar</button>
         <button class="mobile-item" type="button" data-view="upload">Yükle</button>
-        <button class="mobile-item" type="button" data-view="changes">Diğer</button>
+        <button class="mobile-item" type="button" data-view="profile">Profil</button>
       </nav>
     </main>
 

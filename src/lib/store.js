@@ -10,7 +10,8 @@ const defaultData = {
   users: [],
   snapshots: [],
   events: [],
-  followerCounts: []
+  followerCounts: [],
+  profileMetrics: []
 };
 
 function resolveFromRoot(value) {
@@ -44,12 +45,13 @@ export class Store {
       const result = await this.pool.query("select value from app_state where key = $1", ["default"]);
       if (result.rows[0]?.value) {
         const parsed = result.rows[0].value;
-        this.data = {
-          users: parsed.users ?? [],
-          snapshots: parsed.snapshots ?? [],
-          events: parsed.events ?? [],
-          followerCounts: parsed.followerCounts ?? []
-        };
+      this.data = {
+        users: parsed.users ?? [],
+        snapshots: parsed.snapshots ?? [],
+        events: parsed.events ?? [],
+        followerCounts: parsed.followerCounts ?? [],
+        profileMetrics: parsed.profileMetrics ?? []
+      };
       } else {
         await this.save();
       }
@@ -73,7 +75,8 @@ export class Store {
       users: parsed.users ?? [],
       snapshots: parsed.snapshots ?? [],
       events: parsed.events ?? [],
-      followerCounts: parsed.followerCounts ?? []
+      followerCounts: parsed.followerCounts ?? [],
+      profileMetrics: parsed.profileMetrics ?? []
     };
   }
 
@@ -146,6 +149,16 @@ export class Store {
     return this.data.followerCounts
       .filter((point) => point.userId === userId)
       .sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
+  }
+
+  profileMetricsForUser(userId) {
+    return this.data.profileMetrics
+      .filter((metric) => metric.userId === userId)
+      .sort((a, b) => new Date(b.capturedAt) - new Date(a.capturedAt));
+  }
+
+  latestProfileMetricForUser(userId) {
+    return this.profileMetricsForUser(userId)[0] ?? null;
   }
 }
 
